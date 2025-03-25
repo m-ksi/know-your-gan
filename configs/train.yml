@@ -1,0 +1,41 @@
+seed: 42
+device: cpu
+
+net_g:
+  type: ImageGenerator
+  params:
+    nz: 100
+    ngf: 64
+    out128: false
+
+net_d:
+  type: PatchDiscriminator
+  params:
+    use_spectral_norm: true
+
+data:
+  type: CelebA32
+  params:
+    imsize: 32
+    train_aug: true
+  loader:
+    batch_size: 16
+
+optim_g:
+  type: Adam
+  params:
+    lr: 0.0001
+
+optim_d:
+  type: Adam
+  params:
+    lr: 0.0001
+
+lossf: hinge
+use_gp: false
+mind_the_gap: false
+skip_confident_model: false
+
+num_iters: 10000
+log_every: 100
+fid_every: 100
