@@ -11,6 +11,7 @@ net_g:
 net_d:
   type: PatchDiscriminator
   params:
+    nf: 64
     use_spectral_norm: true
 
 data:

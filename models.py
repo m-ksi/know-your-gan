@@ -182,5 +182,6 @@ class SynthDiscriminator(nn.Module):
 
 if __name__ == "__main__":
     import torchsummary
-    g = ImageGenerator(100, 64)
-    torchsummary.summary(g, (100,), batch_size=2)
+    # g = ImageGenerator(100, 64)
+    g = PatchDiscriminator(64)
+    torchsummary.summary(g, (3, 32, 32), batch_size=2)
