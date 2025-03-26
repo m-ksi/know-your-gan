@@ -7,7 +7,7 @@ Inspired from https://github.com/ChristophReich1996/Mode_Collapse/blob/master/lo
 """
 
 def gp_lossf(disc, real_samples, fake_samples, lambda_gp=2.):
-    alpha = torch.rand((real_samples.shape[0], 1), device=real_samples.device)
+    alpha = torch.rand((real_samples.shape[0], 1, 1, 1), device=real_samples.device)
     samples_interp = (alpha * real_samples + (1. - alpha) * fake_samples)
     samples_interp.requires_grad = True
     disc_pred_interp = disc(samples_interp)
@@ -17,6 +17,12 @@ def gp_lossf(disc, real_samples, fake_samples, lambda_gp=2.):
                                 retain_graph=True)[0]
     gradient_penalty = (grads.view(grads.shape[0], -1).norm(dim=1) - 1.).pow(2).mean()
     return gradient_penalty * lambda_gp
+
+def zero_centered_gp_lossf(samples, logits, gamma=1):
+    grads = torch.autograd.grad(outputs=logits.sum(),
+                                inputs=samples,
+                                create_graph=True)[0]
+    return grads.square().sum([1, 2, 3]) * gamma
 
 def get_lossf(name):
     match name:
