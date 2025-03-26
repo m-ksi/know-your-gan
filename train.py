@@ -56,6 +56,7 @@ def train(cfg):
     use_wgan_gradient_penalty = cfg.use_gp
     use_r1_gradient_penalty = cfg.use_r1_gp
     use_r2_gradient_penalty = cfg.use_r2_gp
+    gp_gamma = cfg.zero_centered_gp_gamma
     loss_gp = torch.tensor(0.)
     loss_r1_gp = torch.tensor(0.)
     loss_r2_gp = torch.tensor(0.)
@@ -95,10 +96,10 @@ def train(cfg):
             loss_gp = gp_lossf(net_d, batch, fake_samples)
             total_d_loss += loss_gp
         if use_r1_gradient_penalty:
-            loss_r1_gp = zero_centered_gp_lossf(batch, pred_real)
+            loss_r1_gp = zero_centered_gp_lossf(batch, pred_real, gp_gamma)
             total_d_loss += loss_r1_gp
         if use_r2_gradient_penalty:
-            loss_r2_gp = zero_centered_gp_lossf(fake_samples, pred_fake)
+            loss_r2_gp = zero_centered_gp_lossf(fake_samples, pred_fake, gp_gamma)
             total_d_loss += loss_r2_gp
         total_d_loss.backward()
         optim_d.step()

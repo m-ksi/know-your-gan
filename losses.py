@@ -40,6 +40,8 @@ def get_lossf(name):
             return RALSGANGenLoss(), RALSGANDiscLoss()
         case 'rahinge':
             return RAHingeGANGenLoss(), RAHingeGANDiscLoss()
+        case 'rpgan':
+            return RpGANGenLoss(), RpGANDiscLoss()
         case _:
             raise NotImplementedError(f"Loss function {name} not implemented yet!")
         
@@ -165,3 +167,21 @@ class RAHingeGANDiscLoss(nn.Module):
         diff_r_f = disc_pred_real - real_mean
         diff_f_r = disc_pred_fake - fake_mean
         return torch.clamp((ones - diff_r_f), min=0).mean() + torch.clamp((ones + diff_f_r), min=0).mean()
+
+class RpGANGenLoss(nn.Module):
+    """
+    RpGAN Loss for generator
+    """
+    def forward(self, disc_pred_fake, disc, real_samples, **kwargs):
+        disc_pred_real = disc(real_samples)
+        relativistic = disc_pred_fake - disc_pred_real
+        return F.softplus(-relativistic)
+    
+class RpGANDiscLoss(nn.Module):
+    """
+    RpGAN Loss for discriminator
+    """
+    optimal_val = -1 # idky
+    def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
+        relativistic = disc_pred_real - disc_pred_fake
+        return F.softplus(-relativistic)

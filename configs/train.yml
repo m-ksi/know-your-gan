@@ -38,6 +38,7 @@ lossf: ralsgan
 use_gp: true
 use_r1_gp: false
 use_r2_gp: false
+zero_centered_gp_gamma: 0.5
 mind_the_gap: false
 skip_confident_model: false
 
