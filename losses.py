@@ -22,7 +22,7 @@ def zero_centered_gp_lossf(samples, logits, gamma=1):
     grads = torch.autograd.grad(outputs=logits.sum(),
                                 inputs=samples,
                                 create_graph=True)[0]
-    return grads.square().sum([1, 2, 3]) * gamma
+    return grads.square().sum([1, 2, 3]).mean() * gamma
 
 def get_lossf(name):
     match name:
@@ -175,7 +175,7 @@ class RpGANGenLoss(nn.Module):
     def forward(self, disc_pred_fake, disc, real_samples, **kwargs):
         disc_pred_real = disc(real_samples)
         relativistic = disc_pred_fake - disc_pred_real
-        return F.softplus(-relativistic)
+        return F.softplus(-relativistic).mean()
     
 class RpGANDiscLoss(nn.Module):
     """
@@ -184,4 +184,4 @@ class RpGANDiscLoss(nn.Module):
     optimal_val = -1 # idky
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         relativistic = disc_pred_real - disc_pred_fake
-        return F.softplus(-relativistic)
+        return F.softplus(-relativistic).mean()
