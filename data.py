@@ -30,7 +30,7 @@ class CelebA(Dataset):
         img = np.array(Image.open(os.path.join('datasets/CelebA/CelebA-img', self.images[index])))
         img = self.transform(img)
         if self.train_aug and random.random() < 0.5:
-            img = torch.flip(img, [1])
+            img = torch.flip(img, [2])
         if self.imsize != img.shape[1]:
             img = torch.nn.functional.interpolate(img.unsqueeze(0), (self.imsize, self.imsize), mode='area')[0]
         return img
