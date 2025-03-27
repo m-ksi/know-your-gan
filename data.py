@@ -16,7 +16,10 @@ def get_dataset(conf):
 
 class CelebA(Dataset):
     def __init__(self, imsize=32, train_aug=True):
-        self.images = os.listdir('datasets/CelebA/CelebA-img')
+        if imsize == 128:
+            self.images = os.listdir('datasets/CelebA/CelebA-img')
+        elif imsize == 32:
+            self.images = os.listdir('datasets/CelebA32/CelebA-img')
         self.images = [i for i in self.images if int(i.split('.')[0]) < 162771] # only train images
         self.imsize = imsize
         self.train_aug = train_aug

@@ -15,6 +15,8 @@ net_d:
   params:
     nf: 32
     use_spectral_norm: false
+    nf: 16
+    use_spectral_norm: false
 
 data:
   type: CelebA32
@@ -22,26 +24,28 @@ data:
     imsize: 32
     train_aug: true
   loader:
-    batch_size: 64
+    batch_size: 128
 
 optim_g:
   type: Adam
   params:
-    lr: 0.000025
+    lr: 0.0002
 
 optim_d:
   type: Adam
   params:
-    lr: 0.000025
+    lr: 0.0001
 
 lossf: ralsgan
 use_gp: true
 use_r1_gp: false
 use_r2_gp: false
 zero_centered_gp_gamma: 0.5
+lossf: wgan
+use_gp: true
 mind_the_gap: false
 skip_confident_model: false
 
-num_iters: 10000
+num_iters: 100000
 log_every: 100
-fid_every: 100
+fid_every: 500

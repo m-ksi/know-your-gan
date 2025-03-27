@@ -70,6 +70,9 @@ def train(cfg):
 
     history = defaultdict(lambda: {})
 
+    epochs = cfg.num_iters * batch_size / len(dataset)
+    print(f'Starting trainig for {epochs:.2f} epochs')
+
     net_g.train()
     net_d.train()
     pbar = tqdm(range(cfg.num_iters), desc='training...')
