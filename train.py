@@ -7,11 +7,9 @@ from models import get_model
 from losses import get_lossf, gp_lossf, zero_centered_gp_lossf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from collections import defaultdict
-import os
 from torchvision.utils import make_grid
 from PIL import Image
-import pandas as pd
+from logger import Logger
 
 def get_optimizer(net, conf):
     # Adam, RMSprop
@@ -41,7 +39,7 @@ def train(cfg):
         experiment_str = experiment_str + "-r1"
     if cfg.use_r2_gp:
         experiment_str = experiment_str + "-r2"
-    os.makedirs(f'experiments/{experiment_str}/images', exist_ok=True)
+    logger = Logger(f'experiments/{experiment_str}')
 
     dataset = get_dataset(cfg.data)
     dataloader = DataLoader(dataset, shuffle=True, **cfg.data['loader'])
@@ -71,8 +69,6 @@ def train(cfg):
     d_steps_trained = 0.
 
     fixed_generator_noise = torch.randn([4, latent_size], device=cfg.device)
-
-    history = defaultdict(lambda: {})
 
     epochs = cfg.num_iters * batch_size / len(dataset)
     print(f'Starting trainig for {epochs:.2f} epochs')
@@ -140,22 +136,26 @@ def train(cfg):
             descr = descr + f", D loss EMA {loss_d_ema.item():.4f}"
         pbar.set_description(descr)
         if (i + 1) % cfg.log_every == 0:
-            history['loss_g'][i+1] = loss_g.item()
-            history['loss_d'][i+1] = loss_d.item()
-            history['d_pred_real'][i+1] = d_pred_real_item
-            history['d_pred_fake'][i+1] = d_pred_fake_item
+            logger.log_metrics(
+                {
+                    'loss_g': loss_g.item(),
+                    'loss_d': loss_d.item(),
+                    'd_pred_real': d_pred_real_item,
+                    'd_pred_fake': d_pred_fake_item
+                }, i+1
+            )
             if use_wgan_gradient_penalty:
-                history['loss_gp'][i+1] = loss_gp.item()
+                logger.log_metric(loss_gp.item(), 'loss_gp', i+1)
             if use_r1_gradient_penalty:
-                history['loss_r1_gp'][i+1] = loss_r1_gp.item()
+                logger.log_metric(loss_r1_gp.item(), 'loss_r1_gp', i+1)
             if use_r2_gradient_penalty:
-                history['loss_r2_gp'][i+1] = loss_r2_gp.item()
+                logger.log_metric(loss_r2_gp.item(), 'loss_r2_gp', i+1)
             if adaptive_lr:
-                history['d_lr_factor'][i+1] = current_d_lr_factor
-                history['loss_d_ema'][i+1] = loss_d_ema
+                logger.log_metric(current_d_lr_factor, 'd_lr_factor', i+1)
+                logger.log_metric(loss_d_ema, 'loss_d_ema', i+1)
             if skip_confident_model:
-                history['d_steps_trained'][i+1] = d_steps_trained / cfg.log_every
-                history['g_steps_trained'][i+1] = g_steps_trained / cfg.log_every
+                logger.log_metric(d_steps_trained / cfg.log_every, 'd_steps_trained', i+1)
+                logger.log_metric(g_steps_trained / cfg.log_every, 'g_steps_trained', i+1)
 
         if (i + 1) % cfg.img_every == 0:
             net_g.eval()
@@ -170,8 +170,6 @@ def train(cfg):
             net_g.train()
 
         pbar.update(n=1)
-    history_df = pd.DataFrame.from_dict(history)
-    history_df.to_csv(f'experiments/{experiment_str}/history.csv')
     torch.save(net_g.state_dict(), f'experiments/{experiment_str}/net_g.state_dict.pth')
     torch.save(net_d.state_dict(), f'experiments/{experiment_str}/net_d.state_dict.pth')
     print('training finished!')
