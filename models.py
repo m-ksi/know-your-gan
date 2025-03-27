@@ -21,13 +21,15 @@ def get_model(conf):
             cl = PatchDiscriminator
         case 'UNetDiscriminator':
             cl = UNetDiscriminator
+        case 'SymmetricDiscriminator':
+            cl = SymmetricDiscriminator
         case _:
             raise NotImplementedError(f"Model type {conf['type']} not implemented!")
     model = cl(**conf['params'])
     return model
 
 class ResBlock(nn.Module):
-    def __init__(self, in_ch, cardinality, expansion_f, ks, var_scaling_param):
+    def __init__(self, in_ch, cardinality, expansion_f, ks, var_scaling_param, use_spectral_norm=False):
         super().__init__()
         self.act = nn.LeakyReLU(0.1, inplace=True)
         expanded_ch = in_ch * expansion_f
@@ -36,6 +38,10 @@ class ResBlock(nn.Module):
         self.conv1 = initialize(nn.Conv2d(in_ch, expanded_ch, kernel_size=1, stride=1, padding=0, bias=True), act_gain)
         self.conv2 = initialize(nn.Conv2d(expanded_ch, expanded_ch, kernel_size=ks, stride=1, padding=1, groups=cardinality, bias=True), act_gain)
         self.conv3 = initialize(nn.Conv2d(expanded_ch, in_ch, kernel_size=1, stride=1, padding=0, bias=False), 0)
+        if use_spectral_norm:
+            self.conv1 = spectral_norm(self.conv1)
+            self.conv2 = spectral_norm(self.conv2)
+            # self.conv3 = spectral_norm(self.conv3)
 
     def forward(self, x):
         h = self.conv1(x)
@@ -64,6 +70,27 @@ class Upsample(nn.Module):
         h = nn.functional.interpolate(h, scale_factor=2, mode='bilinear', align_corners=False)
         return h
     
+class DiscriminatorHead(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.basis = initialize(nn.Conv2d(in_ch, in_ch, kernel_size=4, stride=1, padding=0, groups=in_ch, bias=False))
+        self.fc = initialize(nn.Linear(in_ch, out_ch, bias=False))
+
+    def forward(self, x):
+        return self.fc(self.basis(x).view(x.shape[0], -1))
+        
+class Downsample(nn.Module):
+    def __init__(self, in_ch, out_ch, use_spectral_norm=False):
+        super().__init__()
+        self.conv = nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=1, padding=0, bias=False)
+        if use_spectral_norm:
+            self.conv = spectral_norm(self.conv)
+
+    def forward(self, x):
+        h = nn.functional.interpolate(x, scale_factor=0.5, mode='bilinear', align_corners=False)
+        h = self.conv(h)
+        return h
+    
 class GeneratorBlock(nn.Module):
     def __init__(self, in_ch, out_ch, cardinality, num_blocks, expansion_f, ks, var_scaling_param, noise_inp=True):
         super().__init__()
@@ -81,6 +108,18 @@ class GeneratorBlock(nn.Module):
     def forward(self, x):
         h = self.layers(x)
         return h
+    
+class DiscriminatorBlock(nn.Module):
+    def __init__(self, in_ch, out_ch, cardinality, num_blocks, expansion_f, ks, var_scaling_param, head=False, use_spectral_norm=False):
+        super().__init__()
+        top = DiscriminatorHead(in_ch, out_ch) if head else Downsample(in_ch, out_ch,use_spectral_norm=use_spectral_norm)
+        self.layers = nn.Sequential(
+            *[ResBlock(in_ch, cardinality, expansion_f, ks, var_scaling_param, use_spectral_norm=use_spectral_norm) for _ in range(num_blocks)],
+            top
+        )
+    
+    def forward(self, x):
+        return self.layers(x)
 
 class ImageGenerator(nn.Module):
     def __init__(self, nz, channels, cardinalities, n_blocks, expansion_f, ks=3):
@@ -93,6 +132,21 @@ class ImageGenerator(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+    
+class SymmetricDiscriminator(nn.Module):
+    def __init__(self, channels, cardinalities, n_blocks, expansion_f, ks=3, use_spectral_norm=False):
+        super().__init__()
+        var_scaling_param = sum(n_blocks)
+        self.extraction_layer = initialize(nn.Conv2d(3, channels[0], kernel_size=1))
+        self.layers = nn.Sequential(
+            *[DiscriminatorBlock(channels[x], channels[x+1], cardinalities[x], n_blocks[x], expansion_f, ks, var_scaling_param, use_spectral_norm=use_spectral_norm) for x in range(len(channels)-1)],
+            DiscriminatorBlock(channels[-1], 1, cardinalities[-1], n_blocks[-1], expansion_f, ks, var_scaling_param, head=True, use_spectral_norm=use_spectral_norm)
+        )
+
+    def forward(self, x):
+        h = self.extraction_layer(x)
+        h = self.layers(h)
+        return h.view(x.shape[0])
 
 class PatchDiscriminator(nn.Module):
     def __init__(self, nf=32, use_spectral_norm=True):
@@ -206,12 +260,22 @@ class SynthDiscriminator(nn.Module):
 
 if __name__ == "__main__":
     import torchsummary
-    g = ImageGenerator(
-        64,
-        [768, 768, 768, 768],
-        [96, 96, 96, 96],
+    g = SymmetricDiscriminator(
+        [256, 256, 256, 256],
+        [32, 32, 32, 32],
         [2, 2, 2, 2],
-        2
+        2,
+        use_spectral_norm=True
     ).cuda()
-    # g = PatchDiscriminator(64)
-    torchsummary.summary(g, (64,), batch_size=2)
+    # # g = PatchDiscriminator(64)
+    torchsummary.summary(g, (3, 32, 32), batch_size=2)
+    print(g(torch.randn(2, 3, 32, 32).cuda()))
+
+    # g = ImageGenerator(
+    #     64,
+    #     [256, 256, 256, 256],
+    #     [32, 32, 32, 32],
+    #     [2, 2, 2, 2],
+    #     2
+    # ).cuda()
+    # torchsummary.summary(g, (64,), batch_size=2)
