@@ -37,6 +37,10 @@ def train(cfg):
         experiment_str = experiment_str + "-gap"
     if cfg.skip_confident_model:
         experiment_str = experiment_str + "-skip"
+    if cfg.use_r1_gp:
+        experiment_str = experiment_str + "-r1"
+    if cfg.use_r2_gp:
+        experiment_str = experiment_str + "-r2"
     os.makedirs(f'experiments/{experiment_str}/images', exist_ok=True)
 
     dataset = get_dataset(cfg.data)
@@ -90,20 +94,23 @@ def train(cfg):
         optim_d.zero_grad()
         optim_g.zero_grad()
         with torch.no_grad():
-            fake_samples = net_g(latent_noise)
+            fake_samples = net_g(latent_noise).requires_grad_(True)
+        batch = batch.detach().requires_grad_(True)
         pred_real = net_d(batch)
         pred_fake = net_d(fake_samples)
+        if use_r1_gradient_penalty:
+            loss_r1_gp = zero_centered_gp_lossf(batch, pred_real, gp_gamma)
+        if use_r2_gradient_penalty:
+            loss_r2_gp = zero_centered_gp_lossf(fake_samples, pred_fake, gp_gamma)
         loss_d = lossf_d(pred_real, pred_fake)
-        total_d_loss = loss_d
+        total_d_loss = loss_d + loss_r1_gp + loss_r2_gp
+        if use_r1_gradient_penalty:
+            total_d_loss += loss_r1_gp
+        if use_r2_gradient_penalty:
+            total_d_loss += loss_r2_gp
         if use_wgan_gradient_penalty:
             loss_gp = gp_lossf(net_d, batch, fake_samples)
             total_d_loss += loss_gp
-        if use_r1_gradient_penalty:
-            loss_r1_gp = zero_centered_gp_lossf(batch, pred_real, gp_gamma)
-            total_d_loss += loss_r1_gp
-        if use_r2_gradient_penalty:
-            loss_r2_gp = zero_centered_gp_lossf(fake_samples, pred_fake, gp_gamma)
-            total_d_loss += loss_r2_gp
         total_d_loss.backward()
         optim_d.step()
         d_steps_trained += 1
@@ -150,7 +157,7 @@ def train(cfg):
                 history['d_steps_trained'][i+1] = d_steps_trained / cfg.log_every
                 history['g_steps_trained'][i+1] = g_steps_trained / cfg.log_every
 
-        if (i + 1) % cfg.fid_every == 0:
+        if (i + 1) % cfg.img_every == 0:
             net_g.eval()
             with torch.no_grad():
                 fixed_images = net_g(fixed_generator_noise).cpu()
