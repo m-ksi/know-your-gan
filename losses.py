@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 """
 Inspired from https://github.com/ChristophReich1996/Mode_Collapse/blob/master/loss.py and https://github.com/tariktemur/RGAN-and-RaGAN-PyTorch/blob/master/utils.py
@@ -50,13 +51,14 @@ class GANGenLoss(nn.Module):
     Standard GAN Loss for generator
     """
     def forward(self, disc_pred_fake, **kwargs):
-        return -F.softplus(disc_pred_fake).mean()
+        # softplus(-x) instead of -log(sigm(x)) for computational stability
+        return F.softplus(disc_pred_fake).mean()
     
 class GANDiscLoss(nn.Module):
     """
     Standard GAN Loss for discriminator
     """
-    optimal_val = 0.6
+    optimal_val = math.log(4)
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         return F.softplus(-disc_pred_real).mean() \
                + F.softplus(disc_pred_fake).mean()
@@ -65,7 +67,6 @@ class NSGANGenLoss(nn.Module):
     """
     Non-saturating GAN Loss for generator
     """
-    optimal_val = 0.6
     def forward(self, disc_pred_fake, **kwargs):
         return F.softplus(-disc_pred_fake).mean()
     
@@ -95,7 +96,7 @@ class LSGANGenLoss(nn.Module):
     Least Squares GAN Loss for generator
     """
     def forward(self, disc_pred_fake, **kwargs):
-        return -0.5 * (disc_pred_fake - 1.).pow(2).mean()
+        return 0.5 * (disc_pred_fake - 1.).pow(2).mean()
     
 class LSGANDiscLoss(nn.Module):
     """
@@ -103,7 +104,7 @@ class LSGANDiscLoss(nn.Module):
     """
     optimal_val = 0.5
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
-        return 0.5 * ((-disc_pred_real - 1.).pow(2).mean()
+        return 0.5 * ((disc_pred_real - 1.).pow(2).mean()
                       + disc_pred_fake.pow(2).mean())
     
 class HingeGANGenLoss(WGANGenLoss):
