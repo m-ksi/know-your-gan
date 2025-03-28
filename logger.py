@@ -5,6 +5,7 @@ class Logger:
         self.path = path
         os.makedirs(os.path.join(path, 'images'), exist_ok=True)
         os.makedirs(os.path.join(path, 'metrics'), exist_ok=True)
+        os.makedirs(os.path.join(path, 'states'), exist_ok=True)
         self.keys = keys
         self.files = {}
         for key in keys:
@@ -23,7 +24,7 @@ class Logger:
             self.log_metric(value, key, step)
 
     def log_image(self, image, step):
-        image.save(os.path.join(self.path, f'images/{step}.png'))
+        image.save(os.path.join(self.path, f'images/{step:08}.png'))
 
     def finish(self):
         for file in self.files:

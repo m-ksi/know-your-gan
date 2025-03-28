@@ -5,15 +5,18 @@ net_g:
   type: ImageGenerator
   params:
     nz: 64
-    channels: [768, 768, 768, 768]
-    cardinalities: [96, 96, 96, 96]
+    channels: [256, 256, 256, 256]
+    cardinalities: [32, 32, 32, 32]
     n_blocks: [2, 2, 2, 2]
     expansion_f: 2
 
 net_d:
-  type: UNetDiscriminator
+  type: SymmetricDiscriminator
   params:
-    nf: 32
+    channels: [256, 256, 256, 256]
+    cardinalities: [32, 32, 32, 32]
+    n_blocks: [2, 2, 2, 2]
+    expansion_f: 2
     use_spectral_norm: false
 
 data:
@@ -44,7 +47,9 @@ zero_centered_gp_gamma: 5
 mind_the_gap: false
 skip_confident_model: false
 
-num_iters: 1000
-log_every: 1
-img_every: 5
-fid_every: 100
+num_iters: 40000
+log_every: 10
+img_every: 100
+fid_every: 1000
+save_every: 10000
+resume_from: ~

@@ -260,22 +260,22 @@ class SynthDiscriminator(nn.Module):
 
 if __name__ == "__main__":
     import torchsummary
-    g = SymmetricDiscriminator(
+    # g = SymmetricDiscriminator(
+    #     [64, 64, 64, 64],
+    #     [8, 8, 8, 8],
+    #     [2, 2, 2, 2],
+    #     2,
+    #     use_spectral_norm=True
+    # ).cuda()
+    # # # g = PatchDiscriminator(64)
+    # torchsummary.summary(g, (3, 32, 32), batch_size=2)
+    # print(g(torch.randn(2, 3, 32, 32).cuda()))
+
+    g = ImageGenerator(
+        64,
         [256, 256, 256, 256],
         [32, 32, 32, 32],
         [2, 2, 2, 2],
-        2,
-        use_spectral_norm=True
+        2
     ).cuda()
-    # # g = PatchDiscriminator(64)
-    torchsummary.summary(g, (3, 32, 32), batch_size=2)
-    print(g(torch.randn(2, 3, 32, 32).cuda()))
-
-    # g = ImageGenerator(
-    #     64,
-    #     [256, 256, 256, 256],
-    #     [32, 32, 32, 32],
-    #     [2, 2, 2, 2],
-    #     2
-    # ).cuda()
-    # torchsummary.summary(g, (64,), batch_size=2)
+    torchsummary.summary(g, (64,), batch_size=2)

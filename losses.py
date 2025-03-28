@@ -59,6 +59,10 @@ class GANDiscLoss(nn.Module):
     Standard GAN Loss for discriminator
     """
     optimal_val = math.log(4)
+    x_min = 0.1 * optimal_val
+    x_max = 0.1 * optimal_val
+    h_min = 0.1
+    f_max = 2
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         return F.softplus(-disc_pred_real).mean() \
                + F.softplus(disc_pred_fake).mean()
@@ -87,6 +91,10 @@ class WGANDiscLoss(nn.Module):
     Wasserstein GAN Loss for discriminator
     """
     optimal_val = 0
+    x_min = 0.1
+    x_max = 0.1
+    h_min = 0.1
+    f_max = 2
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         return -disc_pred_real.mean() \
                + disc_pred_fake.mean()
@@ -103,6 +111,10 @@ class LSGANDiscLoss(nn.Module):
     Least Squares GAN Loss for discriminator
     """
     optimal_val = 0.5
+    x_min = 0.1 * optimal_val
+    x_max = 0.1 * optimal_val
+    h_min = 0.1
+    f_max = 2
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         return 0.5 * ((disc_pred_real - 1.).pow(2).mean()
                       + disc_pred_fake.pow(2).mean())
