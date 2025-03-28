@@ -12,6 +12,17 @@ from PIL import Image
 from logger import Logger
 import os
 
+def cosine_decay_with_warmup(cur_step, base_value, total_steps, final_value=0.0, warmup_value=0.0, warmup_steps=0, hold_base_value_steps=0):
+    decay = 0.5 * (1 + np.cos(np.pi * (cur_step - warmup_steps - hold_base_value_steps) / float(total_steps - warmup_steps - hold_base_value_steps)))
+    cur_value = base_value + (1 - decay) * (final_value - base_value)
+    if hold_base_value_steps > 0:
+        cur_value = np.where(cur_step > warmup_steps + hold_base_value_steps, cur_value, base_value)
+    if warmup_steps > 0:
+        slope = (base_value - warmup_value) / warmup_steps
+        warmup_v = slope * cur_step + warmup_value
+        cur_value = np.where(cur_step < warmup_steps, warmup_v, cur_value)
+    return float(np.where(cur_step > total_steps, final_value, cur_value))
+
 def get_optimizer(net, conf):
     # Adam, RMSprop
     params = net.parameters()
@@ -27,6 +38,10 @@ def get_optimizer(net, conf):
 
 def train(cfg):
     torch.manual_seed(cfg.seed)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+
     experiment_str = f"{cfg.data['type']}-{cfg.net_d['type']}-{cfg.lossf}"
     if cfg.net_d['params']['use_spectral_norm']:
         experiment_str = experiment_str + "-sn"
@@ -68,7 +83,6 @@ def train(cfg):
     use_wgan_gradient_penalty = cfg.use_gp
     use_r1_gradient_penalty = cfg.use_r1_gp
     use_r2_gradient_penalty = cfg.use_r2_gp
-    gp_gamma = cfg.zero_centered_gp_gamma
     loss_gp = torch.tensor(0.)
     loss_r1_gp = torch.tensor(0.)
     loss_r2_gp = torch.tensor(0.)
@@ -100,6 +114,20 @@ def train(cfg):
             batch = next(train_iter)
         batch = batch.to(cfg.device)
 
+        # update schedules
+        cur_base_g_lr = cosine_decay_with_warmup(i, **cfg.lr_scheduler)
+        cur_beta2 = cosine_decay_with_warmup(i, **cfg.beta2_scheduler)
+        for group in optim_g.param_groups:
+            group['lr'] = cur_base_g_lr
+            group['beta2'] = cur_beta2
+        base_d_lr = cosine_decay_with_warmup(i, **cfg.lr_scheduler)
+        if not adaptive_lr:
+            for group in optim_d.param_groups:
+                group['lr'] = base_d_lr
+                group['beta2'] = cur_beta2
+        if use_r1_gradient_penalty or use_r2_gradient_penalty:
+            gp_gamma = cosine_decay_with_warmup(i, **cfg.gamma_scheduler)
+
         # update d
         latent_noise = torch.randn([batch.shape[0], latent_size], device=cfg.device)
         optim_d.zero_grad()
@@ -128,6 +156,7 @@ def train(cfg):
             # change d lr
             for group in optim_d.param_groups:
                 group['lr'] = base_d_lr * d_lr_multiplier
+                group['beta2'] = cur_beta2
         if skip_confident_model:
             delta_v = loss_d.item() - lossf_d.optimal_val
             if delta_v < lossf_d.confidence_min: # skip d update if it's too sure 
@@ -185,7 +214,8 @@ def train(cfg):
                     'loss_g': loss_g.item(),
                     'loss_d': loss_d.item(),
                     'd_pred_real': d_pred_real_item,
-                    'd_pred_fake': d_pred_fake_item
+                    'd_pred_fake': d_pred_fake_item,
+                    'lr': cur_base_g_lr,
                 }, i+1
             )
             if use_wgan_gradient_penalty:
