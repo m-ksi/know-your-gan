@@ -44,12 +44,18 @@ Relativistic Discriminator ([Paper](https://arxiv.org/abs/1807.00734)):
 Mind the (optimality) Gap ([Paper](https://arxiv.org/abs/2302.00089)): 
 - Gap-Aware LR scheduler
 
+Image-to-Image transition ([Paper](https://arxiv.org/pdf/1611.07004)):
+- PatchGAN architecture
+
+U-Net based discriminator ([Paper](https://arxiv.org/abs/2002.12655)):
+- Idea of U-Net architecture for discriminator
+
 Mostly inspired from [R3GAN](https://github.com/brownvc/R3GAN) ([Paper](https://arxiv.org/abs/2501.05441)):
-- Generator and Discriminator architecture.
+- Generator and Discriminator architectures.
 - Zero-centered gradient penalties
 - RpGAN loss
 
-Thanks [ChristophReich1996](https://github.com/ChristophReich1996) for the fun [repo](https://github.com/ChristophReich1996/Mode_Collapse) that has inspired me.
+Thanks [ChristophReich1996](https://github.com/ChristophReich1996) for awesome [repo](https://github.com/ChristophReich1996/Mode_Collapse) that has inspired this toybox.
 
 ## Metrics
 
