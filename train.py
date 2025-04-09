@@ -307,37 +307,3 @@ if __name__ == "__main__":
     cfg = argparse.Namespace(**cfg)
 
     train(cfg)
-
-# if __name__ == "__main__":
-#     TODO will be moved to a different file for metric calculation
-#     from metrics import metric_utils
-#     import scipy
-#     from dnnlib import EasyDict
-#     max_real = None
-#     opts = EasyDict()
-#     opts.cache = True
-#     opts.rank = 0
-#     opts.num_gpus = 1
-#     opts.progress = metric_utils.ProgressMonitor()
-#     opts.device = 'cuda'
-#     opts.dataset_kwargs = {
-#             "type": "CelebA32",
-#             "params":
-#                 {'imsize': 32,
-#                 'train_aug': True}
-#         }
-#     detector_url = 'https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/metrics/inception-2015-12-05.pkl'
-#     detector_kwargs = dict(return_features=True) # Return raw features before the softmax layer.
-
-#     mu_real, sigma_real = metric_utils.compute_feature_stats_for_dataset(
-#         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
-#         rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=max_real).get_mean_cov()
-
-#     mu_gen, sigma_gen = metric_utils.compute_feature_stats_for_dataset(
-#         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
-#         rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=max_real).get_mean_cov()
-
-#     m = np.square(mu_gen - mu_real).sum()
-#     s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen, sigma_real), disp=False) # pylint: disable=no-member
-#     fid = np.real(m + np.trace(sigma_gen + sigma_real - s * 2))
-#     print(float(fid))
