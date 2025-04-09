@@ -11,6 +11,9 @@ from torchvision.utils import make_grid
 from PIL import Image
 from logger import Logger
 import os
+from copy import deepcopy
+from metrics import metric_main
+import random
 
 def cosine_decay_with_warmup(cur_step, base_value, total_steps, final_value=0.0, warmup_value=0.0, warmup_steps=0, hold_base_value_steps=0):
     decay = 0.5 * (1 + np.cos(np.pi * (cur_step - warmup_steps - hold_base_value_steps) / float(total_steps - warmup_steps - hold_base_value_steps)))
@@ -24,7 +27,6 @@ def cosine_decay_with_warmup(cur_step, base_value, total_steps, final_value=0.0,
     return float(np.where(cur_step > total_steps, final_value, cur_value))
 
 def get_optimizer(net, conf):
-    # Adam, RMSprop
     params = net.parameters()
     match conf['type']:
         case 'Adam':
@@ -38,9 +40,15 @@ def get_optimizer(net, conf):
 
 def train(cfg):
     torch.manual_seed(cfg.seed)
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
+    torch.cuda.manual_seed(cfg.seed)
+    np.random.seed(cfg.seed)
+    random.seed(cfg.seed)
+    # torch.use_deterministic_algorithms(True)
+    
+    # Crashes on my GPU for some reason
+    # torch.backends.cudnn.benchmark = True
+    # torch.backends.cuda.matmul.allow_tf32 = False
+    # torch.backends.cudnn.allow_tf32 = False
 
     experiment_str = f"{cfg.data['type']}-{cfg.net_d['type']}-{cfg.lossf}"
     if cfg.net_d['params']['use_spectral_norm']:
@@ -64,17 +72,21 @@ def train(cfg):
     latent_size = cfg.net_g['params']['nz']
 
     net_g = get_model(cfg.net_g).to(cfg.device)
+    net_g_ema = deepcopy(net_g).eval()
     net_d = get_model(cfg.net_d).to(cfg.device)
 
     optim_g = get_optimizer(net_g, cfg.optim_g)
     optim_d = get_optimizer(net_d, cfg.optim_d)
 
+    resume_step = -1
     if cfg.resume_from:
         resume_step = int(cfg.resume_from.split('/')[-1])
         net_g.load_state_dict(torch.load(f"{cfg.resume_from}/net_g.state_dict.pth"))
+        net_g_ema.load_state_dict(torch.load(f"{cfg.resume_from}/net_g_ema.state_dict.pth"))
         net_d.load_state_dict(torch.load(f"{cfg.resume_from}/net_d.state_dict.pth"))
         optim_g.load_state_dict(torch.load(f"{cfg.resume_from}/optim_g.state_dict.pth"))
         optim_d.load_state_dict(torch.load(f"{cfg.resume_from}/optim_d.state_dict.pth"))
+        print('resuming from step', resume_step)
 
     lossf_g, lossf_d = get_lossf(cfg.lossf)
     loss_d_ema = lossf_d.optimal_val
@@ -87,12 +99,14 @@ def train(cfg):
     loss_r1_gp = torch.tensor(0.)
     loss_r2_gp = torch.tensor(0.)
     adaptive_lr = cfg.mind_the_gap
-    current_d_lr_factor = 1.
     skip_confident_model = cfg.skip_confident_model
     skip_d = False
     skip_g = False
     g_steps_trained = 0.
     d_steps_trained = 0.
+
+    metrics = ['fid50k_full'] #, 'kid50k_full', 'pr50k3_full']
+    final_metrics = ['fid50k_full', 'kid50k_full', 'pr50k3_full']
 
     fixed_generator_noise = torch.randn([4, latent_size], device=cfg.device)
 
@@ -102,9 +116,9 @@ def train(cfg):
     net_g.train()
     net_d.train()
     pbar = tqdm(range(cfg.num_iters), desc='training...')
-    resume_step = -1
     for i in range(cfg.num_iters):
         if i < resume_step:
+            pbar.update(n=1)
             continue
         # get data
         try:
@@ -115,6 +129,7 @@ def train(cfg):
         batch = batch.to(cfg.device)
 
         # update schedules
+        ema_beta = cosine_decay_with_warmup(i, **cfg.ema_scheduler)
         cur_base_g_lr = cosine_decay_with_warmup(i, **cfg.lr_scheduler)
         cur_beta2 = cosine_decay_with_warmup(i, **cfg.beta2_scheduler)
         for group in optim_g.param_groups:
@@ -164,7 +179,7 @@ def train(cfg):
             elif delta_v > lossf_d.confidence_max: # skip g update if d is too bad
                 skip_g = True
                 
-        total_d_loss = loss_d + loss_r1_gp + loss_r2_gp
+        total_d_loss = loss_d 
         if use_r1_gradient_penalty:
             total_d_loss += loss_r1_gp
         if use_r2_gradient_penalty:
@@ -193,6 +208,14 @@ def train(cfg):
         else:
             loss_g = torch.tensor(torch.nan)
 
+        # update g ema
+        with torch.no_grad():
+            with torch.autograd.profiler.record_function('net_g_ema'):
+                for p_ema, p in zip(net_g_ema.parameters(), net_g.parameters()):
+                    p_ema.copy_(p.lerp(p_ema, ema_beta))
+                for b_ema, b in zip(net_g_ema.buffers(), net_g.buffers()):
+                    b_ema.copy_(b)
+
         # metrics
         descr = f"Step: {i+1:5}, G loss {loss_g.item():.4f}, D loss {loss_d.item():.4f}, D real {d_pred_real_item:.4f}, D fake {d_pred_fake_item:.4f}"
         if use_wgan_gradient_penalty:
@@ -202,7 +225,7 @@ def train(cfg):
         if use_r2_gradient_penalty:
             descr = descr + f", R2 {loss_r2_gp.item():.4f}"
         if adaptive_lr:
-            descr = descr + f", D loss EMA {loss_d_ema.item():.4f}"
+            descr = descr + f", D loss EMA {loss_d_ema:.4f}, D factor {d_lr_multiplier}"
         if skip_confident_model:
             descr = descr + f', G trained: {not skip_g}, D trained: {not skip_d}'
             skip_g = False
@@ -225,7 +248,7 @@ def train(cfg):
             if use_r2_gradient_penalty:
                 logger.log_metric(loss_r2_gp.item(), 'loss_r2_gp', i+1)
             if adaptive_lr:
-                logger.log_metric(current_d_lr_factor, 'd_lr_factor', i+1)
+                logger.log_metric(d_lr_multiplier, 'd_lr_factor', i+1)
                 logger.log_metric(loss_d_ema, 'loss_d_ema', i+1)
             if skip_confident_model:
                 logger.log_metric(d_steps_trained / cfg.log_every, 'd_steps_trained', i+1)
@@ -234,7 +257,7 @@ def train(cfg):
         if (i + 1) % cfg.img_every == 0:
             net_g.eval()
             with torch.no_grad():
-                fixed_images = net_g(fixed_generator_noise).cpu()
+                fixed_images = net_g_ema(fixed_generator_noise).cpu()
             fixed_images = make_grid(fixed_images,
                                      normalize=True,
                                      value_range=(-1, 1))
@@ -244,17 +267,34 @@ def train(cfg):
             net_g.train()
 
         if (i + 1) % cfg.save_every == 0:
-            # TODO move this logic to logger class
-            os.makedirs(f'experiments/{experiment_str}/states/{i+1:05}')
+            # TODO move this logic to logger class?
+            os.makedirs(f'experiments/{experiment_str}/states/{i+1:05}', exist_ok=True)
+            torch.save(net_g_ema.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/net_g_ema.state_dict.pth')
             torch.save(net_g.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/net_g.state_dict.pth')
             torch.save(net_d.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/net_d.state_dict.pth')
             torch.save(optim_g.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/optim_g.state_dict.pth')
             torch.save(optim_d.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/optim_d.state_dict.pth')
 
+        if (i + 1) % cfg.fid_every == 0:
+            metrics_to_log = {}
+            for metric in metrics:
+                result_dict = metric_main.calc_metric(metric=metric, G=net_g_ema, dataset_kwargs=cfg.data,
+                                                      num_gpus=1, rank=0, device=cfg.device)
+                for k, v in result_dict['results'].items():
+                    metrics_to_log[k] = v
+                    print(f"{k}: {v}")
+            logger.log_metrics(metrics_to_log, i+1)
+        
         pbar.update(n=1)
+    metrics_to_log = {}
+    for metric in final_metrics:
+        result_dict = metric_main.calc_metric(metric=metric, G=net_g_ema, dataset_kwargs=cfg.data,
+                                                num_gpus=1, rank=0, device=cfg.device)
+        for k, v in result_dict['results'].items():
+            metrics_to_log[k] = v
+            print(f"{k}: {v}")
+    logger.log_metrics(metrics_to_log, i+1)
     logger.finish()
-    torch.save(net_g.state_dict(), f'experiments/{experiment_str}/net_g.state_dict.pth')
-    torch.save(net_d.state_dict(), f'experiments/{experiment_str}/net_d.state_dict.pth')
     print('training finished!')
 
 
@@ -267,3 +307,37 @@ if __name__ == "__main__":
     cfg = argparse.Namespace(**cfg)
 
     train(cfg)
+
+# if __name__ == "__main__":
+#     TODO will be moved to a different file for metric calculation
+#     from metrics import metric_utils
+#     import scipy
+#     from dnnlib import EasyDict
+#     max_real = None
+#     opts = EasyDict()
+#     opts.cache = True
+#     opts.rank = 0
+#     opts.num_gpus = 1
+#     opts.progress = metric_utils.ProgressMonitor()
+#     opts.device = 'cuda'
+#     opts.dataset_kwargs = {
+#             "type": "CelebA32",
+#             "params":
+#                 {'imsize': 32,
+#                 'train_aug': True}
+#         }
+#     detector_url = 'https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/metrics/inception-2015-12-05.pkl'
+#     detector_kwargs = dict(return_features=True) # Return raw features before the softmax layer.
+
+#     mu_real, sigma_real = metric_utils.compute_feature_stats_for_dataset(
+#         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
+#         rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=max_real).get_mean_cov()
+
+#     mu_gen, sigma_gen = metric_utils.compute_feature_stats_for_dataset(
+#         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
+#         rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=max_real).get_mean_cov()
+
+#     m = np.square(mu_gen - mu_real).sum()
+#     s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen, sigma_real), disp=False) # pylint: disable=no-member
+#     fid = np.real(m + np.trace(sigma_gen + sigma_real - s * 2))
+#     print(float(fid))

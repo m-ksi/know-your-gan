@@ -124,6 +124,7 @@ class DiscriminatorBlock(nn.Module):
 class ImageGenerator(nn.Module):
     def __init__(self, nz, channels, cardinalities, n_blocks, expansion_f, ks=3):
         super().__init__()
+        self.z_dim = nz
         var_scaling_param = sum(n_blocks)
         layers = [GeneratorBlock(nz, channels[0], cardinalities[0], n_blocks[0], expansion_f, ks, var_scaling_param)]
         layers += [GeneratorBlock(channels[i], channels[i+1], cardinalities[i+1], n_blocks[i+1], expansion_f, ks, var_scaling_param, noise_inp=False) for i in range(len(channels)-1)]
@@ -267,15 +268,16 @@ if __name__ == "__main__":
     #     2,
     #     use_spectral_norm=True
     # ).cuda()
+    # g = UNetDiscriminator(24, True).cuda()
     # # # g = PatchDiscriminator(64)
     # torchsummary.summary(g, (3, 32, 32), batch_size=2)
     # print(g(torch.randn(2, 3, 32, 32).cuda()))
 
     g = ImageGenerator(
-        64,
-        [256, 256, 256, 256],
-        [32, 32, 32, 32],
-        [2, 2, 2, 2],
-        2
+        **{"nz": 64,
+        "channels": [256, 192, 192, 192],
+        "cardinalities": [32, 24, 24, 24],
+        "n_blocks": [2, 2, 2, 2, 2],
+        "expansion_f": 2,}
     ).cuda()
     torchsummary.summary(g, (64,), batch_size=2)

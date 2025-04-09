@@ -1,55 +1,79 @@
 seed: 42
 device: cuda
 
+num_iters: &niters 50000
+
 net_g:
   type: ImageGenerator
   params:
     nz: 64
-    channels: [256, 256, 256, 256]
-    cardinalities: [32, 32, 32, 32]
-    n_blocks: [2, 2, 2, 2]
+    channels: [256, 192, 192, 192]
+    cardinalities: [32, 24, 24, 24]
+    n_blocks: [2, 2, 2, 2, 2]
     expansion_f: 2
 
 net_d:
   type: SymmetricDiscriminator
   params:
-    channels: [256, 256, 256, 256]
-    cardinalities: [32, 32, 32, 32]
-    n_blocks: [2, 2, 2, 2]
+    channels: [192, 192, 192, 256]
+    cardinalities: [24, 24, 24, 32]
+    n_blocks: [2, 2, 2, 2, 2]
     expansion_f: 2
     use_spectral_norm: false
 
 data:
-  type: CelebA32
+  type: FFHQ
   params:
     imsize: 32
     train_aug: true
   loader:
-    batch_size: 512
+    batch_size: 64
+    num_workers: 8
+    persistent_workers: True
+    pin_memory: True
 
 optim_g:
   type: Adam
   params:
-    lr: 0.0002
+    lr: !!float &lr 2e-4
     betas: [0., 0.9]
 
 optim_d:
   type: Adam
   params:
-    lr: 0.0002
+    lr: *lr
     betas: [0., 0.9]
 
-lossf: rpgan
-use_gp: false
-use_r1_gp: true
-use_r2_gp: true
-zero_centered_gp_gamma: 5
+ema_scheduler:
+  base_value: 0.
+  final_value: 0.99
+  total_steps: *niters
+
+lr_scheduler:
+  base_value: *lr
+  final_value: !!float 1e-4
+  total_steps: *niters
+
+beta2_scheduler:
+  base_value: 0.9
+  final_value: 0.91
+  total_steps: *niters
+
+# gamma for r1 r2 penalties
+gamma_scheduler:
+  base_value: 1
+  final_value: 0.9
+  total_steps: *niters
+
+lossf: lsgan
+use_gp: true
+use_r1_gp: false
+use_r2_gp: false
 mind_the_gap: false
 skip_confident_model: false
 
-num_iters: 40000
 log_every: 10
 img_every: 100
-fid_every: 1000
-save_every: 10000
+fid_every: 5000
+save_every: 5000
 resume_from: ~
