@@ -217,48 +217,6 @@ class UNetDiscriminator(nn.Module):
         out = self.conv9(out)
         return out
     
-class SynthGenerator(nn.Module):
-    def __init__(self, latent_size):
-        super().__init__()
-        self.layers = nn.Sequential(nn.Linear(latent_size, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 256, bias=True),
-                                    nn.Tanh(),
-                                    nn.Linear(256, 2, bias=True))
-    
-    def forward(self, x):
-        return self.layers(x)
-
-class SynthDiscriminator(nn.Module):
-    def __init__(self, use_spectral_norm=False):
-            if use_spectral_norm:
-                self.layers = nn.Sequential(spectral_norm(nn.Linear(2, 256, bias=True)),
-                                    nn.LeakyReLU(),
-                                    spectral_norm(nn.Linear(256, 256, bias=True)),
-                                    nn.LeakyReLU(),
-                                    spectral_norm(nn.Linear(256, 256, bias=True)),
-                                    nn.LeakyReLU(),
-                                    spectral_norm(nn.Linear(256, 256, bias=True)),
-                                    nn.LeakyReLU(),
-                                    spectral_norm(nn.Linear(256, 1, bias=True)))
-            else:
-                self.layers = nn.Sequential(nn.Linear(2, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 256, bias=True),
-                                    nn.LeakyReLU(),
-                                    nn.Linear(256, 1, bias=True))
-                
-    def forward(self, x):
-        return self.layers(x)
-
 if __name__ == "__main__":
     import torchsummary
     # g = SymmetricDiscriminator(
