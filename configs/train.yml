@@ -76,4 +76,4 @@ log_every: 10
 img_every: 100
 fid_every: 5000
 save_every: 5000
-resume_from: experiments/FFHQ-SymmetricDiscriminator-nsgan-gp/states/05000
+resume_from: experiments/FFHQ-SymmetricDiscriminator-nsgan-gp/states/10000
