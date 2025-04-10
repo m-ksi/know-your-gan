@@ -6,6 +6,7 @@ A playground for testing methods of training Generative Adversarial Networks.
 ## Roadmap
 - [ ] Img2Img extension
 - [ ] Post experiment results
+- [ ] ADA
 - [ ] Requirements
 - [ ] Do some cleaning
 - [x] Release the repo

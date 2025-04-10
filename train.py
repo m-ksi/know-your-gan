@@ -1,42 +1,64 @@
 import argparse
-import yaml
-import torch
-import numpy as np
-from data import get_dataset
-from models import get_model
-from losses import get_lossf, gp_lossf, zero_centered_gp_lossf
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from torchvision.utils import make_grid
-from PIL import Image
-from logger import Logger
 import os
-from copy import deepcopy
-from metrics import metric_main
 import random
+from copy import deepcopy
 
-def cosine_decay_with_warmup(cur_step, base_value, total_steps, final_value=0.0, warmup_value=0.0, warmup_steps=0, hold_base_value_steps=0):
-    decay = 0.5 * (1 + np.cos(np.pi * (cur_step - warmup_steps - hold_base_value_steps) / float(total_steps - warmup_steps - hold_base_value_steps)))
+import numpy as np
+import torch
+import yaml
+from PIL import Image
+from torch.utils.data import DataLoader
+from torchvision.utils import make_grid
+from tqdm import tqdm
+
+from src.data import get_dataset
+from src.logger import Logger
+from src.losses import get_lossf, gp_lossf, zero_centered_gp_lossf
+from src.metrics import metric_main
+from src.models import get_model
+
+
+def cosine_decay_with_warmup(
+    cur_step,
+    base_value,
+    total_steps,
+    final_value=0.0,
+    warmup_value=0.0,
+    warmup_steps=0,
+    hold_base_value_steps=0,
+):
+    decay = 0.5 * (
+        1
+        + np.cos(
+            np.pi
+            * (cur_step - warmup_steps - hold_base_value_steps)
+            / float(total_steps - warmup_steps - hold_base_value_steps)
+        )
+    )
     cur_value = base_value + (1 - decay) * (final_value - base_value)
     if hold_base_value_steps > 0:
-        cur_value = np.where(cur_step > warmup_steps + hold_base_value_steps, cur_value, base_value)
+        cur_value = np.where(
+            cur_step > warmup_steps + hold_base_value_steps, cur_value, base_value
+        )
     if warmup_steps > 0:
         slope = (base_value - warmup_value) / warmup_steps
         warmup_v = slope * cur_step + warmup_value
         cur_value = np.where(cur_step < warmup_steps, warmup_v, cur_value)
     return float(np.where(cur_step > total_steps, final_value, cur_value))
 
+
 def get_optimizer(net, conf):
     params = net.parameters()
-    match conf['type']:
-        case 'Adam':
+    match conf["type"]:
+        case "Adam":
             cl = torch.optim.Adam
-        case 'RMSprop':
+        case "RMSprop":
             cl = torch.optim.RMSprop
-        case 'AdamW':
+        case "AdamW":
             cl = torch.optim.AdamW
-    optim = cl(params, **conf['params'])
+    optim = cl(params, **conf["params"])
     return optim
+
 
 def train(cfg):
     torch.manual_seed(cfg.seed)
@@ -44,14 +66,14 @@ def train(cfg):
     np.random.seed(cfg.seed)
     random.seed(cfg.seed)
     # torch.use_deterministic_algorithms(True)
-    
+
     # Crashes on my GPU for some reason
     # torch.backends.cudnn.benchmark = True
     # torch.backends.cuda.matmul.allow_tf32 = False
     # torch.backends.cudnn.allow_tf32 = False
 
     experiment_str = f"{cfg.data['type']}-{cfg.net_d['type']}-{cfg.lossf}"
-    if cfg.net_d['params']['use_spectral_norm']:
+    if cfg.net_d["params"]["use_spectral_norm"]:
         experiment_str = experiment_str + "-sn"
     if cfg.use_gp:
         experiment_str = experiment_str + "-gp"
@@ -63,13 +85,13 @@ def train(cfg):
         experiment_str = experiment_str + "-r1"
     if cfg.use_r2_gp:
         experiment_str = experiment_str + "-r2"
-    logger = Logger(f'experiments/{experiment_str}')
+    logger = Logger(f"experiments/{experiment_str}")
 
     dataset = get_dataset(cfg.data)
-    dataloader = DataLoader(dataset, shuffle=True, **cfg.data['loader'])
+    dataloader = DataLoader(dataset, shuffle=True, **cfg.data["loader"])
     train_iter = iter(dataloader)
-    batch_size = cfg.data['loader']['batch_size']
-    latent_size = cfg.net_g['params']['nz']
+    batch_size = cfg.data["loader"]["batch_size"]
+    latent_size = cfg.net_g["params"]["nz"]
 
     net_g = get_model(cfg.net_g).to(cfg.device)
     net_g_ema = deepcopy(net_g).eval()
@@ -80,42 +102,44 @@ def train(cfg):
 
     resume_step = -1
     if cfg.resume_from:
-        resume_step = int(cfg.resume_from.split('/')[-1])
+        resume_step = int(cfg.resume_from.split("/")[-1])
         net_g.load_state_dict(torch.load(f"{cfg.resume_from}/net_g.state_dict.pth"))
-        net_g_ema.load_state_dict(torch.load(f"{cfg.resume_from}/net_g_ema.state_dict.pth"))
+        net_g_ema.load_state_dict(
+            torch.load(f"{cfg.resume_from}/net_g_ema.state_dict.pth")
+        )
         net_d.load_state_dict(torch.load(f"{cfg.resume_from}/net_d.state_dict.pth"))
         optim_g.load_state_dict(torch.load(f"{cfg.resume_from}/optim_g.state_dict.pth"))
         optim_d.load_state_dict(torch.load(f"{cfg.resume_from}/optim_d.state_dict.pth"))
-        print('resuming from step', resume_step)
+        print("resuming from step", resume_step)
 
     lossf_g, lossf_d = get_lossf(cfg.lossf)
     loss_d_ema = lossf_d.optimal_val
-    base_d_lr = cfg.optim_d['params']['lr']
-    d_lr_multiplier = 1.
+    base_d_lr = cfg.optim_d["params"]["lr"]
+    d_lr_multiplier = 1.0
     use_wgan_gradient_penalty = cfg.use_gp
     use_r1_gradient_penalty = cfg.use_r1_gp
     use_r2_gradient_penalty = cfg.use_r2_gp
-    loss_gp = torch.tensor(0.)
-    loss_r1_gp = torch.tensor(0.)
-    loss_r2_gp = torch.tensor(0.)
+    loss_gp = torch.tensor(0.0)
+    loss_r1_gp = torch.tensor(0.0)
+    loss_r2_gp = torch.tensor(0.0)
     adaptive_lr = cfg.mind_the_gap
     skip_confident_model = cfg.skip_confident_model
     skip_d = False
     skip_g = False
-    g_steps_trained = 0.
-    d_steps_trained = 0.
+    g_steps_trained = 0.0
+    d_steps_trained = 0.0
 
-    metrics = ['fid50k_full'] #, 'kid50k_full', 'pr50k3_full']
-    final_metrics = ['fid50k_full', 'kid50k_full', 'pr50k3_full']
+    metrics = ["fid50k_full"]  # , 'kid50k_full', 'pr50k3_full']
+    final_metrics = ["fid50k_full", "kid50k_full", "pr50k3_full"]
 
     fixed_generator_noise = torch.randn([4, latent_size], device=cfg.device)
 
     epochs = cfg.num_iters * batch_size / len(dataset)
-    print(f'Starting trainig for {epochs:.2f} epochs')
+    print(f"Starting trainig for {epochs:.2f} epochs")
 
     net_g.train()
     net_d.train()
-    pbar = tqdm(range(cfg.num_iters), desc='training...')
+    pbar = tqdm(range(cfg.num_iters), desc="training...")
     for i in range(cfg.num_iters):
         if i < resume_step:
             pbar.update(n=1)
@@ -133,13 +157,13 @@ def train(cfg):
         cur_base_g_lr = cosine_decay_with_warmup(i, **cfg.lr_scheduler)
         cur_beta2 = cosine_decay_with_warmup(i, **cfg.beta2_scheduler)
         for group in optim_g.param_groups:
-            group['lr'] = cur_base_g_lr
-            group['beta2'] = cur_beta2
+            group["lr"] = cur_base_g_lr
+            group["beta2"] = cur_beta2
         base_d_lr = cosine_decay_with_warmup(i, **cfg.lr_scheduler)
         if not adaptive_lr:
             for group in optim_d.param_groups:
-                group['lr'] = base_d_lr
-                group['beta2'] = cur_beta2
+                group["lr"] = base_d_lr
+                group["beta2"] = cur_beta2
         if use_r1_gradient_penalty or use_r2_gradient_penalty:
             gp_gamma = cosine_decay_with_warmup(i, **cfg.gamma_scheduler)
 
@@ -163,23 +187,27 @@ def train(cfg):
             # get new lr
             delta_v = loss_d_ema - lossf_d.optimal_val
             if delta_v < 0:
-                d_lr_multiplier = max(lossf_d.h_min, lossf_d.h_min**(-delta_v/lossf_d.x_min))
+                d_lr_multiplier = max(
+                    lossf_d.h_min, lossf_d.h_min ** (-delta_v / lossf_d.x_min)
+                )
             elif delta_v > 0:
-                d_lr_multiplier = min(lossf_d.f_max, lossf_d.f_max**(-delta_v/lossf_d.x_max))
+                d_lr_multiplier = min(
+                    lossf_d.f_max, lossf_d.f_max ** (-delta_v / lossf_d.x_max)
+                )
             else:
                 d_lr_multiplier = 1
             # change d lr
             for group in optim_d.param_groups:
-                group['lr'] = base_d_lr * d_lr_multiplier
-                group['beta2'] = cur_beta2
+                group["lr"] = base_d_lr * d_lr_multiplier
+                group["beta2"] = cur_beta2
         if skip_confident_model:
             delta_v = loss_d.item() - lossf_d.optimal_val
-            if delta_v < lossf_d.confidence_min: # skip d update if it's too sure 
+            if delta_v < lossf_d.confidence_min:  # skip d update if it's too sure
                 skip_d = True
-            elif delta_v > lossf_d.confidence_max: # skip g update if d is too bad
+            elif delta_v > lossf_d.confidence_max:  # skip g update if d is too bad
                 skip_g = True
-                
-        total_d_loss = loss_d 
+
+        total_d_loss = loss_d
         if use_r1_gradient_penalty:
             total_d_loss += loss_r1_gp
         if use_r2_gradient_penalty:
@@ -210,14 +238,14 @@ def train(cfg):
 
         # update g ema
         with torch.no_grad():
-            with torch.autograd.profiler.record_function('net_g_ema'):
+            with torch.autograd.profiler.record_function("net_g_ema"):
                 for p_ema, p in zip(net_g_ema.parameters(), net_g.parameters()):
                     p_ema.copy_(p.lerp(p_ema, ema_beta))
                 for b_ema, b in zip(net_g_ema.buffers(), net_g.buffers()):
                     b_ema.copy_(b)
 
         # metrics
-        descr = f"Step: {i+1:5}, G loss {loss_g.item():.4f}, D loss {loss_d.item():.4f}, D real {d_pred_real_item:.4f}, D fake {d_pred_fake_item:.4f}"
+        descr = f"Step: {i + 1:5}, G loss {loss_g.item():.4f}, D loss {loss_d.item():.4f}, D real {d_pred_real_item:.4f}, D fake {d_pred_fake_item:.4f}"
         if use_wgan_gradient_penalty:
             descr = descr + f", GP {loss_gp.item():.4f}"
         if use_r1_gradient_penalty:
@@ -227,81 +255,113 @@ def train(cfg):
         if adaptive_lr:
             descr = descr + f", D loss EMA {loss_d_ema:.4f}, D factor {d_lr_multiplier}"
         if skip_confident_model:
-            descr = descr + f', G trained: {not skip_g}, D trained: {not skip_d}'
+            descr = descr + f", G trained: {not skip_g}, D trained: {not skip_d}"
             skip_g = False
             skip_d = False
         pbar.set_description(descr)
         if (i + 1) % cfg.log_every == 0:
             logger.log_metrics(
                 {
-                    'loss_g': loss_g.item(),
-                    'loss_d': loss_d.item(),
-                    'd_pred_real': d_pred_real_item,
-                    'd_pred_fake': d_pred_fake_item,
-                    'lr': cur_base_g_lr,
-                }, i+1
+                    "loss_g": loss_g.item(),
+                    "loss_d": loss_d.item(),
+                    "d_pred_real": d_pred_real_item,
+                    "d_pred_fake": d_pred_fake_item,
+                    "lr": cur_base_g_lr,
+                },
+                i + 1,
             )
             if use_wgan_gradient_penalty:
-                logger.log_metric(loss_gp.item(), 'loss_gp', i+1)
+                logger.log_metric(loss_gp.item(), "loss_gp", i + 1)
             if use_r1_gradient_penalty:
-                logger.log_metric(loss_r1_gp.item(), 'loss_r1_gp', i+1)
+                logger.log_metric(loss_r1_gp.item(), "loss_r1_gp", i + 1)
             if use_r2_gradient_penalty:
-                logger.log_metric(loss_r2_gp.item(), 'loss_r2_gp', i+1)
+                logger.log_metric(loss_r2_gp.item(), "loss_r2_gp", i + 1)
             if adaptive_lr:
-                logger.log_metric(d_lr_multiplier, 'd_lr_factor', i+1)
-                logger.log_metric(loss_d_ema, 'loss_d_ema', i+1)
+                logger.log_metric(d_lr_multiplier, "d_lr_factor", i + 1)
+                logger.log_metric(loss_d_ema, "loss_d_ema", i + 1)
             if skip_confident_model:
-                logger.log_metric(d_steps_trained / cfg.log_every, 'd_steps_trained', i+1)
-                logger.log_metric(g_steps_trained / cfg.log_every, 'g_steps_trained', i+1)
+                logger.log_metric(
+                    d_steps_trained / cfg.log_every, "d_steps_trained", i + 1
+                )
+                logger.log_metric(
+                    g_steps_trained / cfg.log_every, "g_steps_trained", i + 1
+                )
 
         if (i + 1) % cfg.img_every == 0:
             net_g.eval()
             with torch.no_grad():
                 fixed_images = net_g_ema(fixed_generator_noise).cpu()
-            fixed_images = make_grid(fixed_images,
-                                     normalize=True,
-                                     value_range=(-1, 1))
-            fixed_images = fixed_images.permute(1, 2, 0).numpy() * 255.
+            fixed_images = make_grid(fixed_images, normalize=True, value_range=(-1, 1))
+            fixed_images = fixed_images.permute(1, 2, 0).numpy() * 255.0
             fixed_images_pil = Image.fromarray(np.uint8(fixed_images))
-            logger.log_image(fixed_images_pil, i+1)
+            logger.log_image(fixed_images_pil, i + 1)
             net_g.train()
 
         if (i + 1) % cfg.save_every == 0:
             # TODO move this logic to logger class?
-            os.makedirs(f'experiments/{experiment_str}/states/{i+1:05}', exist_ok=True)
-            torch.save(net_g_ema.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/net_g_ema.state_dict.pth')
-            torch.save(net_g.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/net_g.state_dict.pth')
-            torch.save(net_d.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/net_d.state_dict.pth')
-            torch.save(optim_g.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/optim_g.state_dict.pth')
-            torch.save(optim_d.state_dict(), f'experiments/{experiment_str}/states/{i+1:05}/optim_d.state_dict.pth')
+            os.makedirs(
+                f"experiments/{experiment_str}/states/{i + 1:05}", exist_ok=True
+            )
+            torch.save(
+                net_g_ema.state_dict(),
+                f"experiments/{experiment_str}/states/{i + 1:05}/net_g_ema.state_dict.pth",
+            )
+            torch.save(
+                net_g.state_dict(),
+                f"experiments/{experiment_str}/states/{i + 1:05}/net_g.state_dict.pth",
+            )
+            torch.save(
+                net_d.state_dict(),
+                f"experiments/{experiment_str}/states/{i + 1:05}/net_d.state_dict.pth",
+            )
+            torch.save(
+                optim_g.state_dict(),
+                f"experiments/{experiment_str}/states/{i + 1:05}/optim_g.state_dict.pth",
+            )
+            torch.save(
+                optim_d.state_dict(),
+                f"experiments/{experiment_str}/states/{i + 1:05}/optim_d.state_dict.pth",
+            )
 
         if (i + 1) % cfg.fid_every == 0:
             metrics_to_log = {}
             for metric in metrics:
-                result_dict = metric_main.calc_metric(metric=metric, G=net_g_ema, dataset_kwargs=cfg.data,
-                                                      num_gpus=1, rank=0, device=cfg.device)
-                for k, v in result_dict['results'].items():
+                result_dict = metric_main.calc_metric(
+                    metric=metric,
+                    G=net_g_ema,
+                    dataset_kwargs=cfg.data,
+                    num_gpus=1,
+                    rank=0,
+                    device=cfg.device,
+                )
+                for k, v in result_dict["results"].items():
                     metrics_to_log[k] = v
                     print(f"{k}: {v}")
-            logger.log_metrics(metrics_to_log, i+1)
-        
+            logger.log_metrics(metrics_to_log, i + 1)
+
         pbar.update(n=1)
     metrics_to_log = {}
     for metric in final_metrics:
-        result_dict = metric_main.calc_metric(metric=metric, G=net_g_ema, dataset_kwargs=cfg.data,
-                                                num_gpus=1, rank=0, device=cfg.device)
-        for k, v in result_dict['results'].items():
+        result_dict = metric_main.calc_metric(
+            metric=metric,
+            G=net_g_ema,
+            dataset_kwargs=cfg.data,
+            num_gpus=1,
+            rank=0,
+            device=cfg.device,
+        )
+        for k, v in result_dict["results"].items():
             metrics_to_log[k] = v
             print(f"{k}: {v}")
-    logger.log_metrics(metrics_to_log, i+1)
+    logger.log_metrics(metrics_to_log, i + 1)
     logger.finish()
-    print('training finished!')
+    print("training finished!")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--config", type=str, default='configs/train.yml')
+    parser.add_argument("--config", type=str, default="configs/train.yml")
     args = parser.parse_args()
     cfg = yaml.load(open(args.config), Loader=yaml.SafeLoader)
     cfg = argparse.Namespace(**cfg)

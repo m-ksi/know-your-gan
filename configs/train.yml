@@ -65,7 +65,7 @@ gamma_scheduler:
   final_value: 0.9
   total_steps: *niters
 
-lossf: lsgan
+lossf: nsgan
 use_gp: true
 use_r1_gp: false
 use_r2_gp: false
