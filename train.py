@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-from src.data import get_dataset
+from data import get_dataset
 from src.logger import Logger
 from src.losses import get_lossf, gp_lossf, zero_centered_gp_lossf
 from src.metrics import metric_main

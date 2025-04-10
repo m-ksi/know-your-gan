@@ -1,10 +1,11 @@
-import torch
-import numpy as np
-from PIL import Image
 import os
-from torch.utils.data import Dataset
-from torchvision import transforms, datasets
 import random
+
+import numpy as np
+import torch
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import datasets, transforms
 
 
 def get_dataset(conf):
