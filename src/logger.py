@@ -2,12 +2,13 @@ import os
 from PIL import Image
 from typing import Dict, Union, Iterable
 
+
 class Logger:
     def __init__(self, path: str, keys: Iterable[str] = ()):
         self.path = path
-        os.makedirs(os.path.join(path, 'images'), exist_ok=True)
-        os.makedirs(os.path.join(path, 'metrics'), exist_ok=True)
-        os.makedirs(os.path.join(path, 'states'), exist_ok=True)
+        os.makedirs(os.path.join(path, "images"), exist_ok=True)
+        os.makedirs(os.path.join(path, "metrics"), exist_ok=True)
+        os.makedirs(os.path.join(path, "states"), exist_ok=True)
         self.keys = keys
         self.files = {}
         for key in keys:
@@ -23,7 +24,7 @@ class Logger:
         if key in self.files:
             return
         filepath = os.path.join(self.path, f"metrics/{key}.txt")
-        self.files[key] = open(filepath, 'a')
+        self.files[key] = open(filepath, "a")
 
     def log_metric(self, value: Union[float, int], key: str, step: int):
         if key not in self.files:
@@ -40,7 +41,7 @@ class Logger:
             self.log_metric(value, key, step)
 
     def log_image(self, image: Image.Image, step: int):
-        image_path = os.path.join(self.path, f'images/{step:08}.png')
+        image_path = os.path.join(self.path, f"images/{step:08}.png")
         try:
             image.save(image_path)
         except Exception as e:
