@@ -7,12 +7,18 @@ A playground for testing methods of training Generative Adversarial Networks.
 - [ ] Img2Img extension
 - [ ] Post experiment results
 - [ ] ADA
-- [ ] Requirements
-- [ ] Do some cleaning
+- [x] Requirements
+- [x] Do some cleaning
 - [x] Release the repo
 
 ## Requirements
-To be written soon.
+
+Requires python >= 3.10
+I recommend installing pytorch using instructions from official site. Other requirements can be installed with this command:
+
+```
+python -m pip install -r requirements.txt
+```
 
 ## Getting started
 Firstly, you should download data and adjust [`.yml file`](./configs/train.yml), then run
