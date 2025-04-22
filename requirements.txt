@@ -1,0 +1,11 @@
+numpy==2.2.5
+Pillow==11.2.1
+PyYAML==6.0.2
+PyYAML==6.0.2
+Requests==2.32.3
+scipy==1.15.2
+setuptools==75.8.0
+torch==2.6.0+cu126
+torchsummary==1.5.1
+torchvision==0.21.0+cu126
+tqdm==4.58.0

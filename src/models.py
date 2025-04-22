@@ -375,24 +375,39 @@ class UNetDiscriminator(nn.Module):
 if __name__ == "__main__":
     import torchsummary
     # g = SymmetricDiscriminator(
-    #     [64, 64, 64, 64],
-    #     [8, 8, 8, 8],
+    #     [128, 128, 128, 192],
+    #     [16, 16, 16, 24],
     #     [2, 2, 2, 2],
     #     2,
     #     use_spectral_norm=True
     # ).cuda()
-    # g = UNetDiscriminator(24, True).cuda()
-    # # # g = PatchDiscriminator(64)
-    # torchsummary.summary(g, (3, 32, 32), batch_size=2)
+    g = SymmetricDiscriminator(
+        [192, 192, 192, 256],
+        [24, 24, 24, 32],
+        [2, 2, 2, 2],
+        2,
+        use_spectral_norm=False
+    ).cuda()
+    # g = UNetDiscriminator(32, True).cuda()
+    # g = PatchDiscriminator(64).cuda()
+    torchsummary.summary(g, (3, 32, 32), batch_size=2)
     # print(g(torch.randn(2, 3, 32, 32).cuda()))
 
-    g = ImageGenerator(
-        **{
-            "nz": 64,
-            "channels": [256, 192, 192, 192],
-            "cardinalities": [32, 24, 24, 24],
-            "n_blocks": [2, 2, 2, 2, 2],
-            "expansion_f": 2,
-        }
-    ).cuda()
-    torchsummary.summary(g, (64,), batch_size=2)
+    #   type: SymmetricDiscriminator
+    # params:
+    # channels: [128, 128, 128, 192]
+    # cardinalities: [16, 16, 16, 24]
+    # n_blocks: [2, 2, 2, 2, 2]
+    # expansion_f: 2
+    # use_spectral_norm: false
+
+    # g = ImageGenerator(
+    #     **{
+    #         "nz": 64,
+    #         "channels": [256, 192, 192, 192],
+    #         "cardinalities": [32, 24, 24, 24],
+    #         "n_blocks": [2, 2, 2, 2, 2],
+    #         "expansion_f": 2,
+    #     }
+    # ).cuda()
+    # torchsummary.summary(g, (64,), batch_size=2)

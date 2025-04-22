@@ -186,11 +186,11 @@ def train(cfg):
             loss_d_ema = 0.95 * loss_d_ema + 0.05 * loss_d.item()
             # get new lr
             delta_v = loss_d_ema - lossf_d.optimal_val
-            if delta_v < 0:
+            if delta_v < 0: # loss is too small -> D is too good -> decrease lr
                 d_lr_multiplier = max(
                     lossf_d.h_min, lossf_d.h_min ** (-delta_v / lossf_d.x_min)
                 )
-            elif delta_v > 0:
+            elif delta_v > 0: # loss is too great -< D is too weak -> increase lr
                 d_lr_multiplier = min(
                     lossf_d.f_max, lossf_d.f_max ** (-delta_v / lossf_d.x_max)
                 )
@@ -201,10 +201,10 @@ def train(cfg):
                 group["lr"] = base_d_lr * d_lr_multiplier
                 group["beta2"] = cur_beta2
         if skip_confident_model:
-            delta_v = loss_d.item() - lossf_d.optimal_val
-            if delta_v < lossf_d.confidence_min:  # skip d update if it's too sure
+            # delta_v = loss_d.item() - lossf_d.optimal_val
+            if loss_d.item() < lossf_d.confidence_min:  # skip d update if it's too sure
                 skip_d = True
-            elif delta_v > lossf_d.confidence_max:  # skip g update if d is too bad
+            elif loss_d.item() > lossf_d.confidence_max:  # skip g update if d is too bad
                 skip_g = True
 
         total_d_loss = loss_d

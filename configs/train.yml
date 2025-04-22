@@ -22,7 +22,7 @@ net_d:
     use_spectral_norm: false
 
 data:
-  type: FFHQ
+  type: CIFAR10
   params:
     imsize: 32
     train_aug: true
@@ -61,14 +61,14 @@ beta2_scheduler:
 
 # gamma for r1 r2 penalties
 gamma_scheduler:
-  base_value: 1
-  final_value: 0.9
+  base_value: 0.05
+  final_value: 0.02
   total_steps: *niters
 
-lossf: nsgan
-use_gp: true
-use_r1_gp: false
-use_r2_gp: false
+lossf: lsgan
+use_gp: false
+use_r1_gp: true
+use_r2_gp: true
 mind_the_gap: false
 skip_confident_model: false
 
@@ -76,4 +76,4 @@ log_every: 10
 img_every: 100
 fid_every: 5000
 save_every: 5000
-resume_from: experiments/FFHQ-SymmetricDiscriminator-nsgan-gp/states/10000
+resume_from: ~

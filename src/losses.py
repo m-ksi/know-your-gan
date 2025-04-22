@@ -72,6 +72,8 @@ class GANDiscLoss(nn.Module):
     x_max = 0.1 * optimal_val
     h_min = 0.1
     f_max = 2
+    confidence_min = optimal_val * 0.1
+    confidence_max = optimal_val * 2
 
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         return F.softplus(-disc_pred_real).mean() + F.softplus(disc_pred_fake).mean()
@@ -154,6 +156,8 @@ class HingeGANDiscLoss(nn.Module):
     """
 
     optimal_val = 0
+    confidence_min = -1
+    confidence_max = 1
 
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         return (
@@ -231,7 +235,7 @@ class RAHingeGANDiscLoss(nn.Module):
 
 class RpGANGenLoss(nn.Module):
     """
-    RpGAN Loss for generator
+    Relativistic GAN Loss for generator
     """
 
     def forward(self, disc_pred_fake, disc, real_samples, **kwargs):
@@ -242,10 +246,14 @@ class RpGANGenLoss(nn.Module):
 
 class RpGANDiscLoss(nn.Module):
     """
-    RpGAN Loss for discriminator
+    Relativistic Loss for discriminator
     """
 
-    optimal_val = -1  # idky
+    optimal_val = math.log(4) # ? practice shows it's wrong
+    x_min = 0.1 * optimal_val
+    x_max = 0.1 * optimal_val
+    h_min = 0.1
+    f_max = 2
 
     def forward(self, disc_pred_real, disc_pred_fake, **kwargs):
         relativistic = disc_pred_real - disc_pred_fake

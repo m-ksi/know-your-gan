@@ -107,4 +107,4 @@ class Cifar10(Dataset):
         return len(self.ds)
 
     def __getitem__(self, index):
-        return self.ds[index]
+        return self.ds[index][0]
